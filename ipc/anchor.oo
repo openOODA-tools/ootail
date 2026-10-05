@@ -1,0 +1,20 @@
+// # IPC Subsystem Anchor - CLI, MCP Stdio, And AF_UNIX Socket
+//
+// Logline: Presents one follower through three surfaces that must agree.
+//
+// Setup: Skeleton. Depends on std/net/unix_socket.oo and std/net/varlink/. A peer
+// gets an attenuated, TTL-limited FsReadCap, never ambient filesystem authority.
+// Beats:
+//   1. Serve identical semantics over argv, MCP stdio, and a bound socket.
+//   2. Refuse a request the CLI would refuse, and say why in the same shape.
+
+// No implementation yet. This anchor is the documented landing zone for the
+// ipc pages and gives `make verify` a page to check in this domain.
+//
+// Follow semantics are awkward over a socket: a client that disconnects stops
+// the stream. Decide whether a subscriber ends the follow or outlives it before
+// writing the loop, because the answer changes the loop's ownership.
+
+pub fn ipc_anchor_status() -> String {
+    return "ipc: not implemented";
+}

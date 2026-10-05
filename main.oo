@@ -1,0 +1,41 @@
+// # ootail Entry Point
+//
+// Logline: Argument gate for the file follower; the follow loop is not built yet.
+//
+// Setup: Needs FsReadCap to read the named files, and ProcessCap solely to raise a non-zero exit status, because main's return value does not set it.
+//
+// Beats:
+//   1. Answer --help and --version without touching the filesystem.
+//   2. Refuse every other invocation with exit status 2 rather than guess.
+
+pub fn main(fs: &FsReadCap, proc_cap: &ProcessCap, args: List[String]) -> Result[Int, String] {
+    if list_len(args) == 0 {
+        print(render_usage("no files given"));
+        process_exit(2);
+        return Ok(2);
+    }
+    let first: String = list_get(args, 0);
+    if first == "-h" || first == "--help" {
+        print(render_help());
+        return Ok(0);
+    }
+    if first == "-V" || first == "--version" {
+        print("ootail 0.0.1 skeleton\n");
+        return Ok(0);
+    }
+    print(render_usage("following is not implemented"));
+    process_exit(2);
+    return Ok(2);
+}
+
+fn render_help() -> String {
+    return "ootail 0.0.1 (skeleton)\n"
+        + "usage: ootail [options] FILE...\n"
+        + "\n"
+        + "Skeleton only. No file is followed yet.\n";
+}
+
+fn render_usage(reason: String) -> String {
+    return "ootail: " + reason + "\n"
+        + "usage: ootail [options] FILE...\n";
+}

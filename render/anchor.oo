@@ -1,0 +1,18 @@
+// # Render Subsystem Anchor - Emitted Lines To Output
+//
+// Logline: Shapes followed lines for the terminal, honouring prefix and colouring.
+//
+// Setup: Skeleton. Pure text over assembled lines, shared by stdout and socket.
+//
+// Beats:
+//   1. Prefix each line with the source file, optionally with a line number.
+//   2. Emit nothing but bytes when colour is off, so IPC output stays clean.
+// No implementation yet. This anchor is the documented landing zone for the
+// render pages and gives `make verify` a page to check in this domain.
+//
+// Keep colour off unless asked, because a socket peer wants raw bytes and escape
+// codes in a payload are a bug. Build an escape byte explicitly: the string
+// literal does not emit one, and guessing here puts an unescaped ESC on the wire.
+//
+// First page to write: render_line.oo with colour disabled, which is the shape
+// both stdout and a socket frame can share unchanged.
