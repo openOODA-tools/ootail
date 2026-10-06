@@ -8,7 +8,10 @@
 //   1. Answer --help and --version without touching the filesystem.
 //   2. Refuse every other invocation with exit status 2 rather than guess.
 
-pub fn main(fs: &FsReadCap, proc_cap: &ProcessCap, args: List[String]) -> Result[Int, String] {
+import "render/anchor.oo";
+
+pub fn main(fs: &FsReadCap, proc_cap: &ProcessCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
+    let _theme: String = resolve_tail_theme(fs, env);
     if list_len(args) == 0 {
         print(render_usage("no files given"));
         process_exit(2);

@@ -35,43 +35,43 @@ fn str_lower(s: String) -> String {
     return out;
 }
 
-pub fn color_log_trace(text: String, enabled: Bool) -> String {
-    return esc_sgr(theme_log_trace(""), text, enabled);
+pub fn color_log_trace(text: String, theme: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_trace(theme), text, enabled);
 }
 
-pub fn color_log_debug(text: String, enabled: Bool) -> String {
-    return esc_sgr(theme_log_debug(""), text, enabled);
+pub fn color_log_debug(text: String, theme: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_debug(theme), text, enabled);
 }
 
-pub fn color_log_info(text: String, enabled: Bool) -> String {
-    return esc_sgr(theme_log_info(""), text, enabled);
+pub fn color_log_info(text: String, theme: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_info(theme), text, enabled);
 }
 
-pub fn color_log_warn(text: String, enabled: Bool) -> String {
-    return esc_sgr(theme_log_warn(""), text, enabled);
+pub fn color_log_warn(text: String, theme: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_warn(theme), text, enabled);
 }
 
-pub fn color_log_error(text: String, enabled: Bool) -> String {
-    return esc_sgr(theme_log_error(""), text, enabled);
+pub fn color_log_error(text: String, theme: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_error(theme), text, enabled);
 }
 
-pub fn render_log_line(line: String, enabled: Bool) -> String {
+pub fn render_log_line(line: String, theme: String, enabled: Bool) -> String {
     if !enabled { return line; }
     let s: String = str_lower(line);
     if str_contains(s, "error") || str_contains(s, "fatal") || str_contains(s, "panic") || str_contains(s, "[err]") {
-        return color_log_error(line, true);
+        return color_log_error(line, theme, true);
     }
     if str_contains(s, "warn") || str_contains(s, "warning") || str_contains(s, "[wrn]") {
-        return color_log_warn(line, true);
+        return color_log_warn(line, theme, true);
     }
     if str_contains(s, "info") || str_contains(s, "[inf]") {
-        return color_log_info(line, true);
+        return color_log_info(line, theme, true);
     }
     if str_contains(s, "debug") || str_contains(s, "[dbg]") {
-        return color_log_debug(line, true);
+        return color_log_debug(line, theme, true);
     }
     if str_contains(s, "trace") || str_contains(s, "[trc]") {
-        return color_log_trace(line, true);
+        return color_log_trace(line, theme, true);
     }
     return line;
 }
