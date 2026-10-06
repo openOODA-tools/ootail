@@ -1,0 +1,77 @@
+// # Render Line - Theme-Aware Log Line Coloring
+//
+// Logline: Formats followed log lines with semantic ANSI color tokens based on log levels.
+//
+// Setup: Pure string formatter applying ANSI escape sequences per log level tokens.
+//
+// Beats:
+//   1. Convert ASCII string to lowercase for resilient keyword detection.
+//   2. Detect log level semantics (trace, debug, info, warn, error) from line text.
+//   3. Provide explicit coloring helpers for each log token.
+//   4. Pass through raw lines untouched when color is disabled.
+
+import "render_theme.oo";
+
+fn esc_sgr(code: String, text: String, enabled: Bool) -> String {
+    if !enabled { return text; }
+    let esc: String = bytes_to_str(bytes_push(bytes_new(), 27));
+    return esc + "[" + code + "m" + text + esc + "[0m";
+}
+
+fn str_lower(s: String) -> String {
+    let n: Int = chars_len(s);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        let c: String = char_at(s, i);
+        let b: Int = ord(c);
+        if b >= 65 && b <= 90 {
+            out = out + bytes_to_str(bytes_push(bytes_new(), b + 32));
+        } else {
+            out = out + c;
+        }
+        i = i + 1;
+    }
+    return out;
+}
+
+pub fn color_log_trace(text: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_trace(""), text, enabled);
+}
+
+pub fn color_log_debug(text: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_debug(""), text, enabled);
+}
+
+pub fn color_log_info(text: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_info(""), text, enabled);
+}
+
+pub fn color_log_warn(text: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_warn(""), text, enabled);
+}
+
+pub fn color_log_error(text: String, enabled: Bool) -> String {
+    return esc_sgr(theme_log_error(""), text, enabled);
+}
+
+pub fn render_log_line(line: String, enabled: Bool) -> String {
+    if !enabled { return line; }
+    let s: String = str_lower(line);
+    if str_contains(s, "error") || str_contains(s, "fatal") || str_contains(s, "panic") || str_contains(s, "[err]") {
+        return color_log_error(line, true);
+    }
+    if str_contains(s, "warn") || str_contains(s, "warning") || str_contains(s, "[wrn]") {
+        return color_log_warn(line, true);
+    }
+    if str_contains(s, "info") || str_contains(s, "[inf]") {
+        return color_log_info(line, true);
+    }
+    if str_contains(s, "debug") || str_contains(s, "[dbg]") {
+        return color_log_debug(line, true);
+    }
+    if str_contains(s, "trace") || str_contains(s, "[trc]") {
+        return color_log_trace(line, true);
+    }
+    return line;
+}

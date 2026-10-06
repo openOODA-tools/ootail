@@ -18,10 +18,11 @@ OODACODEX ?= $(HOME)/.openooda/northstar.oot
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 BIN := dist/ootail
 
-SRC := main.oo anchor.oo \
-       watch/anchor.oo scan/anchor.oo render/anchor.oo ipc/anchor.oo
+SRC := $(wildcard *.oo) $(wildcard */*.oo)
 
-.PHONY: build check line-cap file-law academy density verify clean
+.PHONY: all build check line-cap file-law academy density verify test clean
+
+all: verify build test
 
 build: $(BIN)
 
@@ -30,6 +31,15 @@ $(BIN): $(SRC)
 	OO_LIST_AMBIENT_QUOTA=$(OO_LIST_AMBIENT_QUOTA) OODACODEX=$(OODACODEX) OODA_COMPILER=$(OODA_COMPILER) OODA_NO_JAIL=1 $(OODA_COMPILER) build main.oo -o $(BIN)
 	@chmod +x $(BIN)
 	@echo "built $(BIN)"
+
+test: $(BIN)
+	@echo "=== testing --help ==="
+	@./$(BIN) --help > /dev/null && echo "PASS: --help"
+	@echo "=== testing --version ==="
+	@./$(BIN) --version > /dev/null && echo "PASS: --version"
+	@echo "=== testing no args (expect 2) ==="
+	@./$(BIN) > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: no args exits 2"
+	@echo "ALL TESTS PASSED"
 
 # --- Verification gate ---------------------------------------------------------
 
