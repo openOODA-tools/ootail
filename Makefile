@@ -66,7 +66,7 @@ test: $(BIN)
 	@test "$$(./$(BIN) -n +1 qa/fixtures/twenty.txt | head -n 1)" = "1" && echo "PASS: -n +1 starts at 1"
 	@test -z "$$(./$(BIN) -n +50 qa/fixtures/twenty.txt)" && echo "PASS: -n +50 beyond EOF emits empty"
 	@test -z "$$(./$(BIN) -c +500 qa/fixtures/twenty.txt)" && echo "PASS: -c +500 beyond EOF emits empty"
-	@test "$$((printf 'line1\n'; sleep 0.15; printf 'line2\n') | ./$(BIN) -n 2)" = "$$(printf 'line1\nline2')" && echo "PASS: stdin stream idle delay does not truncate"
+	@test "$$( (printf 'line1\n'; sleep 0.15; printf 'line2\n') | ./$(BIN) -n 2 )" = "$$(printf 'line1\nline2')" && echo "PASS: stdin stream idle delay does not truncate"
 	@echo "=== Tier 3: Combinations & Formatting ==="
 	@./$(BIN) qa/fixtures/single.txt qa/fixtures/twenty.txt | grep -q "==> qa/fixtures/single.txt <==" && echo "PASS: multi-file header 1"
 	@./$(BIN) qa/fixtures/single.txt qa/fixtures/twenty.txt | grep -q "==> qa/fixtures/twenty.txt <==" && echo "PASS: multi-file header 2"
