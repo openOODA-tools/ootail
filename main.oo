@@ -40,12 +40,17 @@ fn render_help() -> String {
         + "  -V, --version            output version information and exit\n";
 }
 
-fn print_lines(lines: List[String], theme: String, color_on: Bool) {
+fn print_lines(lines: List[String], theme: String, color_on: Bool, has_trailing_nl: Bool) {
     let n: Int = list_len(lines);
     let mut i: Int = 0;
     while i < n {
         let l: String = list_get(lines, i);
-        print(render_log_line(l, theme, color_on) + "\n");
+        let rendered: String = render_log_line(l, theme, color_on);
+        if i + 1 == n && !has_trailing_nl {
+            print(rendered);
+        } else {
+            print(rendered + "\n");
+        }
         i = i + 1;
     }
 }
@@ -54,14 +59,12 @@ fn drain_stdin(fs: &FsReadCap) -> String {
     let mut buf: String = "";
     let mut running: Bool = true;
     while running {
-        let r: Result[String, String] = oo_read_stdin_chunk(fs, 50);
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 100);
         if !r.is_ok() {
             running = false;
         } else {
             let chunk: String = match r { Ok(s) => s, Err(_) => "" };
-            if byte_len(chunk) == 0 {
-                running = false;
-            } else {
+            if byte_len(chunk) > 0 {
                 buf = buf + chunk;
             }
         }
@@ -80,13 +83,15 @@ fn tail_stdin(fs: &FsReadCap, opt: TailOptions, theme: String, color_on: Bool) -
         print(win_bytes);
         return 0;
     }
+    let n_bytes: Int = byte_len(content);
+    let has_trailing_nl: Bool = n_bytes > 0 && byte_get(content, n_bytes - 1) == 10;
     let all_lines: List[String] = scan_split_lines(content);
     let win_lines: List[String] = if opt.lines_from_start {
         scan_window_from(all_lines, opt.lines)
     } else {
         scan_window_tail(all_lines, opt.lines)
     };
-    print_lines(win_lines, theme, color_on);
+    print_lines(win_lines, theme, color_on, has_trailing_nl);
     return 0;
 }
 
@@ -113,13 +118,15 @@ fn tail_emit_file(fs: &FsReadCap, path: String, opt: TailOptions, theme: String,
         print(win_bytes);
         return 0;
     }
+    let n_bytes: Int = byte_len(content);
+    let has_trailing_nl: Bool = n_bytes > 0 && byte_get(content, n_bytes - 1) == 10;
     let all_lines: List[String] = scan_split_lines(content);
     let win_lines: List[String] = if opt.lines_from_start {
         scan_window_from(all_lines, opt.lines)
     } else {
         scan_window_tail(all_lines, opt.lines)
     };
-    print_lines(win_lines, theme, color_on);
+    print_lines(win_lines, theme, color_on, has_trailing_nl);
     return 0;
 }
 
@@ -153,8 +160,10 @@ fn tail_follow_loop(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, env: &EnvCap, 
                 let rd: WatchReadResult = watch_read_append(fs, w);
                 if rd.ok && byte_len(rd.bytes) > 0 {
                     if show_hdr { print(render_file_header(w.path, false)); }
+                    let n_b: Int = byte_len(rd.bytes);
+                    let trail_nl: Bool = byte_get(rd.bytes, n_b - 1) == 10;
                     let new_lines: List[String] = scan_split_lines(rd.bytes);
-                    print_lines(new_lines, theme, color_on);
+                    print_lines(new_lines, theme, color_on, trail_nl);
                 }
                 next_watchers = list_push(next_watchers, rd.new_watch);
             } else {

@@ -56,7 +56,7 @@ fn handle_tool_call(fs: &FsReadCap, id: String, req: String) -> String {
     let args: String = json_field_raw(params, "arguments");
 
     if tool_name == "tail_file" {
-        let path: String = json_field_string(args, "path");
+        let path: String = json_unescape(json_field_string(args, "path"));
         if chars_len(path) == 0 {
             return build_error(id, -32602, "missing required argument: path");
         }
@@ -116,12 +116,15 @@ fn handle_tool_call(fs: &FsReadCap, id: String, req: String) -> String {
 fn handle_mcp_request(fs: &FsReadCap, req: String) -> String {
     let method: String = json_field_string(req, "method");
     let raw_id: String = json_field_raw(req, "id");
-    let id: String = if chars_len(raw_id) == 0 { "null" } else { raw_id };
+    if chars_len(raw_id) == 0 {
+        return "";
+    }
+    let id: String = raw_id;
 
     if method == "initialize" {
         return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"ootail\",\"version\":\"0.2.0\"}}}";
     }
-    if method == "notifications/initialized" {
+    if method == "notifications/initialized" || method == "exit" {
         return "";
     }
     if method == "ping" {
@@ -148,9 +151,7 @@ pub fn run_mcp_server(fs: &FsReadCap) -> Int {
             running = false;
         } else {
             let chunk: String = match r { Ok(s) => s, Err(_) => "" };
-            if chars_len(chunk) == 0 {
-                running = false;
-            } else {
+            if chars_len(chunk) > 0 {
                 buf = buf + chunk;
                 let mut nl_pos: Int = str_index_of(buf, "\n");
                 while nl_pos >= 0 {
@@ -158,6 +159,11 @@ pub fn run_mcp_server(fs: &FsReadCap) -> Int {
                     buf = str_slice(buf, nl_pos + 1, chars_len(buf));
                     let trimmed: String = str_trim(line);
                     if chars_len(trimmed) > 0 {
+                        let method: String = json_field_string(trimmed, "method");
+                        if method == "exit" {
+                            running = false;
+                            break;
+                        }
                         let reply: String = handle_mcp_request(fs, trimmed);
                         if chars_len(reply) > 0 {
                             println(reply);
