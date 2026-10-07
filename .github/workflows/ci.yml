@@ -52,14 +52,14 @@ jobs:
           make build
           make test
 
-      - name: Verify packaging (.deb & .rpm)
+      - name: Verify packaging (.deb, .rpm, and arch)
         working-directory: ${{ github.workspace }}/ootail
         run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq rpm dpkg
+          sudo apt-get install -y -qq rpm
           make package-deb
           make package-rpm
-          ls -la dist/*.deb dist/*.rpm
+          make package-arch
+          ls -la dist/*.deb dist/*.rpm dist/*.pkg.tar.zst
           sudo dpkg -i dist/ootail_*_amd64.deb
           /usr/bin/ootail --version
 
