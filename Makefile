@@ -19,10 +19,11 @@ OODACODEX ?= $(HOME)/.openooda/northstar.oot
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 BIN := dist/ootail
 VERSION ?= 0.1.0
+PREFIX ?= $(HOME)/.openooda/bin
 
 SRC := $(wildcard *.oo) $(wildcard */*.oo)
 
-.PHONY: all build check line-cap file-law academy density verify test package package-deb package-rpm package-arch clean
+.PHONY: all build check line-cap file-law academy density verify test install uninstall package package-deb package-rpm package-arch clean
 
 all: verify build test
 
@@ -99,10 +100,31 @@ package-rpm: $(BIN)
 	@cp ~/rpmbuild/RPMS/x86_64/ootail-$(VERSION)*.rpm dist/
 	@echo "built dist RPM package"
 
-package-arch:
+install: $(BIN)
+	@mkdir -p $(PREFIX)
+	@cp $(BIN) $(PREFIX)/ootail
+	@chmod 0755 $(PREFIX)/ootail
+	@cp uninstall.sh $(PREFIX)/ootail-uninstall
+	@chmod 0755 $(PREFIX)/ootail-uninstall
+	@echo "installed ootail and ootail-uninstall to $(PREFIX)"
+
+uninstall:
+	@rm -f $(PREFIX)/ootail $(PREFIX)/ootail-uninstall /usr/local/bin/ootail /usr/local/bin/ootail-uninstall /usr/bin/ootail /usr/bin/ootail-uninstall
+	@rm -rf $(HOME)/.cache/ootail $(HOME)/.config/ootail
+	@echo "uninstalled ootail"
+
+package-arch: $(BIN)
+	@mkdir -p dist/arch-pkg/usr/bin
+	@cp $(BIN) dist/arch-pkg/usr/bin/ootail
+	@chmod 0755 dist/arch-pkg/usr/bin/ootail
+	@cp uninstall.sh dist/arch-pkg/usr/bin/ootail-uninstall
+	@chmod 0755 dist/arch-pkg/usr/bin/ootail-uninstall
+	@printf "pkgname = ootail\npkgbase = ootail\npkgver = $(VERSION)-1\npkgdesc = Capability-bounded file tail and follower utility with inotify and truncate recovery\nurl = https://github.com/openOODA-tools/ootail\nbuilddate = $$(date +%s)\npackager = openOODA-tools <ops@openooda.org>\nsize = $$(stat -c %s $(BIN))\narch = x86_64\nlicense = Apache-2.0\ndepend = glibc\nprovides = ootail\n" > dist/arch-pkg/.PKGINFO
+	@tar --zstd -cf dist/ootail-$(VERSION)-1-x86_64.pkg.tar.zst -C dist/arch-pkg .PKGINFO usr
+	@rm -rf dist/arch-pkg
 	@bash -n packaging/arch/PKGBUILD
 	@cp packaging/arch/PKGBUILD packaging/PKGBUILD
-	@echo "validated packaging/arch/PKGBUILD and packaging/PKGBUILD"
+	@echo "built dist/ootail-$(VERSION)-1-x86_64.pkg.tar.zst and validated PKGBUILD"
 
 package: package-deb package-rpm package-arch
 

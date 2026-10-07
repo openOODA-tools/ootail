@@ -1,0 +1,14 @@
+Source: ootail
+Section: utils
+Priority: optional
+Maintainer: openOODA-tools <ops@openooda.org>
+Standards-Version: 4.6.2
+Build-Depends: debhelper-compat (= 13)
+
+Package: ootail
+Architecture: amd64
+Depends: libc6
+Description: Capability-bounded file tail and follower utility
+ A drop-in tail replacement written in pure openOODA, featuring
+ line windowing (-n), inotify-probed following (-f), truncated file
+ recovery, and zero ambient authority capability security.
