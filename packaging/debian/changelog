@@ -1,3 +1,13 @@
+ootail (0.2.0-1) stable; urgency=low
+
+  * MCP stdio server mode (--mcp) with tool definitions for LLM coding agents.
+  * Byte windowing (-c, --bytes) with positive offset (+NUM) support.
+  * Line windowing from start offset (+NUM) and legacy flag (+NUM).
+  * Inotify polling with configurable sleep interval (-s) and PID tracking (--pid).
+  * Comprehensive 4-tier QA suite and performance benchmarks.
+
+ -- openOODA-tools <ops@openooda.org>  Wed, 07 Oct 2026 12:00:00 -1000
+
 ootail (0.1.0-1) stable; urgency=low
 
   * Initial release: Capability-bounded file tail and follower utility.

@@ -1,22 +1,23 @@
 // # ootail Entry Point
 //
-// Logline: Capability-bounded file tail and follower utility with inotify and windowing.
+// Logline: Capability-bounded file tail and follower utility with inotify, windowing, and MCP.
 //
 // Setup: Demands &FsReadCap for content, &SysCap for inotify, &TimeCap for polling cadence.
 //
 // Beats:
-//   1. Parse options for line windowing (-n), follow mode (-f/-F), and output formatting.
-//   2. Window file lines from standard input or positional file operands.
-//   3. Follow file appends with inotify probe and truncated file recovery.
+//   1. Parse options for line/byte windowing, follow mode, MCP server, and output formatting.
+//   2. Window file lines or bytes from standard input, MCP stdio, or positional file operands.
+//   3. Follow file appends with inotify probe, truncated file recovery, and PID tracking.
 
 import "render/anchor.oo";
 import "scan/anchor.oo";
 import "watch/anchor.oo";
+import "ipc/mcp_serve.oo";
 import "tail_opts.oo";
 import "std/fs/time/chrono.oo";
 
 fn render_help() -> String {
-    return "ootail 0.1.0 (openOODA sovereign tail)\n"
+    return "ootail 0.2.0 (openOODA sovereign tail)\n"
         + "usage: ootail [options] [FILE]...\n"
         + "\n"
         + "Print the last 10 lines of each FILE to standard output.\n"
@@ -24,15 +25,19 @@ fn render_help() -> String {
         + "With no FILE, or when FILE is -, read standard input.\n"
         + "\n"
         + "Options:\n"
-        + "  -n, --lines=[+]NUM   output the last NUM lines, instead of the last 10\n"
-        + "  -f, --follow         output appended data as the file grows\n"
-        + "  -F                   same as --follow --retry\n"
-        + "  -q, --quiet          never output headers giving file names\n"
-        + "  -v, --verbose        always output headers giving file names\n"
-        + "      --color          colorize log output levels with active theme\n"
-        + "      --no-color       disable color formatting\n"
-        + "  -h, --help           display this help and exit\n"
-        + "  -V, --version        output version information and exit\n";
+        + "  -n, --lines=[+]NUM       output the last NUM lines, or from line NUM with +\n"
+        + "  -c, --bytes=[+]NUM       output the last NUM bytes, or from byte NUM with +\n"
+        + "  -f, --follow             output appended data as the file grows\n"
+        + "  -F                       same as --follow --retry\n"
+        + "  -s, --sleep-interval=S   with -f, sleep for S seconds (default: 0.1)\n"
+        + "      --pid=PID            with -f, terminate after process PID dies\n"
+        + "      --mcp                run Model Context Protocol server over stdio\n"
+        + "  -q, --quiet              never output headers giving file names\n"
+        + "  -v, --verbose            always output headers giving file names\n"
+        + "      --color              colorize log output levels with active theme\n"
+        + "      --no-color           disable color formatting\n"
+        + "  -h, --help               display this help and exit\n"
+        + "  -V, --version            output version information and exit\n";
 }
 
 fn print_lines(lines: List[String], theme: String, color_on: Bool) {
@@ -64,15 +69,28 @@ fn drain_stdin(fs: &FsReadCap) -> String {
     return buf;
 }
 
-fn tail_stdin(fs: &FsReadCap, lines_req: Int, theme: String, color_on: Bool) -> Int {
+fn tail_stdin(fs: &FsReadCap, opt: TailOptions, theme: String, color_on: Bool) -> Int {
     let content: String = drain_stdin(fs);
+    if opt.use_bytes {
+        let win_bytes: String = if opt.bytes_from_start {
+            scan_window_bytes_from(content, opt.bytes)
+        } else {
+            scan_window_bytes(content, opt.bytes)
+        };
+        print(win_bytes);
+        return 0;
+    }
     let all_lines: List[String] = scan_split_lines(content);
-    let win: List[String] = scan_window_tail(all_lines, lines_req);
-    print_lines(win, theme, color_on);
+    let win_lines: List[String] = if opt.lines_from_start {
+        scan_window_from(all_lines, opt.lines)
+    } else {
+        scan_window_tail(all_lines, opt.lines)
+    };
+    print_lines(win_lines, theme, color_on);
     return 0;
 }
 
-fn tail_emit_file(fs: &FsReadCap, path: String, lines_req: Int, theme: String, color_on: Bool, show_hdr: Bool, is_first: Bool) -> Int {
+fn tail_emit_file(fs: &FsReadCap, path: String, opt: TailOptions, theme: String, color_on: Bool, show_hdr: Bool, is_first: Bool) -> Int {
     if !path_exists(fs, path) {
         print("ootail: cannot open '" + path + "' for reading: No such file or directory\n");
         return 1;
@@ -83,28 +101,48 @@ fn tail_emit_file(fs: &FsReadCap, path: String, lines_req: Int, theme: String, c
         return 1;
     }
     let content: String = match r { Ok(s) => s, Err(_) => "" };
-    let all_lines: List[String] = scan_split_lines(content);
-    let win: List[String] = scan_window_tail(all_lines, lines_req);
     if show_hdr {
         print(render_file_header(path, is_first));
     }
-    print_lines(win, theme, color_on);
+    if opt.use_bytes {
+        let win_bytes: String = if opt.bytes_from_start {
+            scan_window_bytes_from(content, opt.bytes)
+        } else {
+            scan_window_bytes(content, opt.bytes)
+        };
+        print(win_bytes);
+        return 0;
+    }
+    let all_lines: List[String] = scan_split_lines(content);
+    let win_lines: List[String] = if opt.lines_from_start {
+        scan_window_from(all_lines, opt.lines)
+    } else {
+        scan_window_tail(all_lines, opt.lines)
+    };
+    print_lines(win_lines, theme, color_on);
     return 0;
 }
 
-fn tail_follow_loop(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, env: &EnvCap, files: List[String], theme: String, color_on: Bool, show_hdr: Bool) -> Int {
+fn tail_follow_loop(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, env: &EnvCap, opt: TailOptions, theme: String, color_on: Bool, show_hdr: Bool) -> Int {
     let _inotify_ok: Bool = watch_probe_inotify(sys);
-    let n_files: Int = list_len(files);
+    let n_files: Int = list_len(opt.files);
     let mut watchers: List[TailWatch] = list_new();
     let mut i: Int = 0;
     while i < n_files {
-        watchers = list_push(watchers, watch_file_init(fs, list_get(files, i)));
+        watchers = list_push(watchers, watch_file_init(fs, list_get(opt.files, i)));
         i = i + 1;
     }
     let cycle_env: Result[String, String] = env_get(env, "OODA_TAIL_CYCLES");
     let max_cycles: Int = match cycle_env { Ok(s) => parse_tail_int(s), Err(_) => 0 - 1 };
+    let sleep_ms: Int = opt.sleep_interval_ms;
     let mut cycle: Int = 0;
     while max_cycles < 0 || cycle < max_cycles {
+        if opt.pid > 0 {
+            let pid_path: String = "/proc/" + opt.pid.to_string();
+            if !path_exists(fs, pid_path) {
+                break;
+            }
+        }
         let mut j: Int = 0;
         let mut next_watchers: List[TailWatch] = list_new();
         while j < n_files {
@@ -125,7 +163,7 @@ fn tail_follow_loop(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, env: &EnvCap, 
             j = j + 1;
         }
         watchers = next_watchers;
-        chrono_sleep_ms(time, 100);
+        chrono_sleep_ms(time, sleep_ms);
         cycle = cycle + 1;
     }
     return 0;
@@ -134,18 +172,22 @@ fn tail_follow_loop(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, env: &EnvCap, 
 pub fn main(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, proc_cap: &ProcessCap, env: &EnvCap, args: List[String]) -> Result[Int, String] {
     let opt: TailOptions = parse_tail_args(args);
     if opt.show_help { print(render_help()); return Ok(0); }
-    if opt.show_version { print("ootail 0.1.0 (openOODA sovereign tail)\n"); return Ok(0); }
+    if opt.show_version { print("ootail 0.2.0 (openOODA sovereign tail)\n"); return Ok(0); }
     if opt.error_msg != "" {
         print("ootail: " + opt.error_msg + "\nTry 'ootail --help' for more information.\n");
         process_exit(2);
         return Ok(2);
+    }
+    if opt.mcp_mode {
+        let mcp_rc: Int = run_mcp_server(fs);
+        return Ok(mcp_rc);
     }
     let theme: String = resolve_tail_theme(fs, env);
     let color_on: Bool = opt.color;
     let num_files: Int = list_len(opt.files);
     let mut rc: Int = 0;
     if num_files == 0 || (num_files == 1 && list_get(opt.files, 0) == "-") {
-        rc = tail_stdin(fs, opt.lines, theme, color_on);
+        rc = tail_stdin(fs, opt, theme, color_on);
         if rc != 0 { process_exit(rc); }
         return Ok(rc);
     }
@@ -153,12 +195,12 @@ pub fn main(fs: &FsReadCap, sys: &SysCap, time: &TimeCap, proc_cap: &ProcessCap,
     let mut i: Int = 0;
     while i < num_files {
         let f: String = list_get(opt.files, i);
-        let cur_rc: Int = tail_emit_file(fs, f, opt.lines, theme, color_on, show_hdr, i == 0);
+        let cur_rc: Int = tail_emit_file(fs, f, opt, theme, color_on, show_hdr, i == 0);
         if cur_rc != 0 { rc = cur_rc; }
         i = i + 1;
     }
     if opt.follow {
-        tail_follow_loop(fs, sys, time, env, opt.files, theme, color_on, show_hdr);
+        tail_follow_loop(fs, sys, time, env, opt, theme, color_on, show_hdr);
     }
     if rc != 0 { process_exit(rc); }
     return Ok(rc);

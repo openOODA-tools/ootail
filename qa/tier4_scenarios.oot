@@ -1,0 +1,41 @@
+# Tier 4: Scenarios And MCP Protocol Assertions
+File: ootail/qa/tier4_scenarios.oot
+
+Status: ACTIVE. Validates end-to-end agent and system workflows.
+
+## Scope
+
+Verifies Model Context Protocol stdio transport frames, multi-turn
+sessions, systemd journal integration, and live rotation scenarios.
+
+## MCP Protocol Invariants
+
+The MCP server runs over stdio with newline-delimited JSON-RPC 2.0 frames.
+Zero ambient authority is granted; all operations use explicit capabilities.
+
+| ID | Invocation | Expectation |
+| --- | --- | --- |
+| T4-01 | `initialize` frame | returns protocolVersion 2024-11-05 and serverInfo |
+| T4-02 | `notifications/initialized` | silent acknowledgment, ready for calls |
+| T4-03 | `ping` frame | returns empty result object |
+| T4-04 | `tools/list` frame | declares `tail_file` and `tail_stream` tools |
+| T4-05 | `tools/call` tail_file lines | returns trailing lines from file target |
+| T4-06 | `tools/call` tail_file bytes | returns trailing bytes from file target |
+| T4-07 | `tools/call` tail_file +offset | returns lines from start offset |
+| T4-08 | `tools/call` tail_stream lines | windows lines from in-memory string |
+| T4-09 | `tools/call` unknown tool | returns JSON-RPC error -32601 |
+| T4-10 | `tools/call` missing path | returns JSON-RPC error -32602 |
+| T4-11 | `shutdown` frame | returns null result and closes session |
+
+## Systemd & Streaming Scenarios
+
+| ID | Invocation | Expectation |
+| --- | --- | --- |
+| T4-12 | `journalctl -n 5 \| ootail -n 3` | stream journalctl output through tail window |
+| T4-13 | inotify append cycle | follower yields appended lines and sleeps |
+| T4-14 | file truncate cycle | follower reports truncation notice and resets offset |
+
+## Invariant Under Test
+
+An LLM agent receives structured, escaped, bounded output suitable for context windows.
+Transport loops handle disconnections cleanly without zombie processes.

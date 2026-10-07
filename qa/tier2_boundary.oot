@@ -1,0 +1,37 @@
+# Tier 2: Boundary And Negative Trust Assertions
+File: ootail/qa/tier2_boundary.oot
+
+Status: ACTIVE. Fail-closed validation across edge and boundary inputs.
+
+## Scope
+
+Malformed input, hostile arguments, zero-byte targets, and missing files.
+Each case must produce a named error or safe zero-allocation result.
+Silent success on bad input is a fatal defect.
+
+## Assertions
+
+| ID | Invocation | Expectation |
+| --- | --- | --- |
+| T2-01 | `ootail --invalid-flag-xyz` | unknown flag named, exit 2 |
+| T2-02 | `ootail -n` (missing arg) | missing argument named, exit 2 |
+| T2-03 | `ootail -c` (missing arg) | missing argument named, exit 2 |
+| T2-04 | `ootail /nonexistent/file/path` | missing file named, exit 1 |
+| T2-05 | `ootail qa/fixtures/empty.txt` | 0-byte file emits 0 lines, exit 0 |
+| T2-06 | `ootail -n 0 qa/fixtures/twenty.txt` | zero lines requested emits empty output |
+| T2-07 | `ootail -c 0 qa/fixtures/twenty.txt` | zero bytes requested emits empty output |
+| T2-08 | `ootail -n 100 qa/fixtures/single.txt` | count exceeds file size, returns all lines |
+| T2-09 | `ootail -c 1000 qa/fixtures/single.txt` | byte count exceeds size, returns all bytes |
+| T2-10 | `ootail -n +1 qa/fixtures/twenty.txt` | +1 line offset starts at first line |
+| T2-11 | `ootail -n +50 qa/fixtures/twenty.txt` | line offset beyond EOF emits empty output |
+| T2-12 | `ootail -c +500 qa/fixtures/twenty.txt` | byte offset beyond EOF emits empty output |
+| T2-13 | `ootail qa/fixtures/no_nl.txt` | handles file without trailing newline |
+| T2-14 | `ootail qa/fixtures/crlf.txt` | strips CR without byte corruption |
+| T2-15 | `ootail --mcp` (unknown tool) | JSON-RPC error -32601 |
+| T2-16 | `ootail --mcp` (missing path) | JSON-RPC error -32602 |
+| T2-17 | `ootail --mcp` (bad path) | JSON-RPC error -32602 file not found |
+
+## Invariant Under Test
+
+No malformed input may produce unexpected zero status.
+Boundary bounds must stay strictly clamped without indexing panics.

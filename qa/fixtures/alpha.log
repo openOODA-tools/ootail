@@ -1,0 +1,8 @@
+[2026-10-07T08:00:00Z] [INFO] system initialization started
+[2026-10-07T08:00:01Z] [DEBUG] loading capability tokens &FsReadCap &SysCap
+[2026-10-07T08:00:02Z] [TRACE] probing inotify device descriptor
+[2026-10-07T08:00:03Z] [INFO] follower watch initialized successfully
+[2026-10-07T08:00:04Z] [WARN] queue capacity nearing soft limit 80%
+[2026-10-07T08:00:05Z] [ERROR] downstream subscriber lagged 500ms
+[2026-10-07T08:00:06Z] [INFO] self-healing buffer recovered
+[2026-10-07T08:00:07Z] [DEBUG] cycle complete without drop

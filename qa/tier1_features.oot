@@ -1,0 +1,39 @@
+# Tier 1: Core Feature Assertions
+File: ootail/qa/tier1_features.oot
+
+Status: ACTIVE. Executed by `make test` against the built binary.
+
+## Scope
+
+Happy-path coverage for every documented output mode and flag in ootail.
+Each assertion names the invocation and the expected observable.
+Tier 1 proves the tool delivers core GNU tail parity and MCP services.
+
+## Assertions
+
+| ID | Invocation | Expectation |
+| --- | --- | --- |
+| T1-01 | `ootail --help` | prints usage block, exit 0 |
+| T1-02 | `ootail --version` | prints version banner, exit 0 |
+| T1-03 | `ootail qa/fixtures/twenty.txt` | default emits last 10 lines (11-20) |
+| T1-04 | `ootail -n 5 qa/fixtures/twenty.txt` | emits last 5 lines (16-20) |
+| T1-05 | `ootail -n +16 qa/fixtures/twenty.txt` | starts from line 16 to end |
+| T1-06 | `ootail -5 qa/fixtures/twenty.txt` | digit flag shortcut emits last 5 lines |
+| T1-07 | `ootail +16 qa/fixtures/twenty.txt` | legacy +NUM emits lines 16 to 20 |
+| T1-08 | `ootail -c 10 qa/fixtures/alpha.log` | emits trailing 10 bytes |
+| T1-09 | `ootail -c +10 qa/fixtures/single.txt` | emits bytes from offset 10 onward |
+| T1-10 | `printf 'a\nb\nc\n' \| ootail -n 2` | stdin stream piping last 2 lines |
+| T1-11 | `printf 'abcdef' \| ootail -c 3` | stdin stream byte windowing |
+| T1-12 | `ootail qa/fixtures/single.txt qa/fixtures/twenty.txt` | multi-file header dividers |
+| T1-13 | `ootail -q qa/fixtures/single.txt qa/fixtures/twenty.txt` | suppresses header dividers |
+| T1-14 | `ootail -v qa/fixtures/single.txt` | forces header divider for single file |
+| T1-15 | `ootail --mcp` (initialize) | returns protocolVersion and serverInfo |
+| T1-16 | `ootail --mcp` (tools/list) | declares tail_file and tail_stream |
+| T1-17 | `ootail --mcp` (tail_file) | returns trailing lines in JSON content |
+| T1-18 | `ootail --mcp` (tail_stream) | returns stream window in JSON content |
+| T1-19 | `ootail -f` file append | follows appended log line via inotify |
+| T1-20 | `ootail -f` file truncate | detects truncation notice and recovers |
+
+## Determinism
+
+Every assertion is executed deterministically against the sovereign binary.

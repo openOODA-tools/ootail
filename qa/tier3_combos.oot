@@ -1,0 +1,29 @@
+# Tier 3: Flag Combination Assertions
+File: ootail/qa/tier3_combos.oot
+
+Status: ACTIVE. Verifies flags compose cleanly rather than conflict.
+
+## Scope
+
+Verifies multi-flag interactions, stdin composition, and precedence rules.
+Independent options must preserve individual guarantees when composed.
+
+## Assertions
+
+| ID | Invocation | Expectation |
+| --- | --- | --- |
+| T3-01 | `ootail -n 3 -q qa/fixtures/twenty.txt qa/fixtures/alpha.log` | emits 6 lines with zero headers |
+| T3-02 | `ootail -n 2 -v qa/fixtures/twenty.txt` | forces header on 2-line window |
+| T3-03 | `printf 'foo\nbar\n' \| ootail -c 4` | byte windowing on piped stdin |
+| T3-04 | `ootail --color qa/fixtures/alpha.log` | log levels receive theme SGR codes |
+| T3-05 | `ootail --no-color qa/fixtures/alpha.log` | log levels contain no ANSI SGR escapes |
+| T3-06 | `ootail --lines=5 qa/fixtures/twenty.txt` | long-form argument sets line window |
+| T3-07 | `ootail --bytes=15 qa/fixtures/alpha.log` | long-form argument sets byte window |
+| T3-08 | `ootail -- qa/fixtures/-weird.txt` | double dash treats dash as literal filename |
+| T3-09 | `ootail -s 1 -f qa/fixtures/single.txt` | custom sleep interval parses without error |
+| T3-10 | `ootail --pid=999999 -f qa/fixtures/single.txt` | follower terminates when dead PID not found |
+
+## Invariant Under Test
+
+Flag combinations must compose monotonically without option bleeding.
+Option terminators (--) must halt option interpretation cleanly.

@@ -9,8 +9,10 @@
 #   make density     - enforce at most 8 pages per directory
 #   make verify      - run line-cap, file-law, academy, density, and check
 #   make test        - run functional test suite
+#   make bench       - run performance benchmarks
 #   make package-deb - generate Debian (.deb) package
 #   make package-rpm - generate RedHat/Fedora (.rpm) package
+#   make package-arch- generate Arch Linux (.pkg.tar.zst) package
 #   make package     - build all distribution packages
 #   make clean       - remove build artifacts
 
@@ -18,12 +20,12 @@ OODA_COMPILER ?= $(firstword $(wildcard $(HOME)/.openooda/bin/oodac $(CURDIR)/..
 OODACODEX ?= $(HOME)/.openooda/northstar.oot
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 BIN := dist/ootail
-VERSION ?= 0.1.0
+VERSION ?= 0.2.0
 PREFIX ?= $(HOME)/.openooda/bin
 
 SRC := $(wildcard *.oo) $(wildcard */*.oo)
 
-.PHONY: all build check line-cap file-law academy density verify test install uninstall package package-deb package-rpm package-arch clean
+.PHONY: all build check line-cap file-law academy density verify test bench install uninstall package package-deb package-rpm package-arch clean
 
 all: verify build test
 
@@ -36,49 +38,82 @@ $(BIN): $(SRC)
 	@echo "built $(BIN)"
 
 test: $(BIN)
-	@echo "=== testing --help ==="
+	@echo "=== Tier 1: Core CLI & Windowing ==="
 	@./$(BIN) --help > /dev/null && echo "PASS: --help"
-	@echo "=== testing --version ==="
-	@./$(BIN) --version > /dev/null && echo "PASS: --version"
-	@echo "=== testing invalid flag (expect exit 2) ==="
-	@./$(BIN) --invalid-xyz > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: invalid flag exits 2"
-	@echo "=== testing missing file (expect exit 1) ==="
-	@./$(BIN) /nonexistent/file/path/xyz > /dev/null 2>&1; test $$? -eq 1 && echo "PASS: missing file exits 1"
-	@echo "=== testing -n line windowing ==="
-	@seq 1 20 > .test_lines.txt
-	@test "$$(./$(BIN) -n 5 .test_lines.txt | wc -l)" = "5" && echo "PASS: -n 5 emits 5 lines"
-	@test "$$(./$(BIN) -n 5 .test_lines.txt | head -n 1)" = "16" && echo "PASS: -n 5 starts at 16"
-	@test "$$(./$(BIN) -3 .test_lines.txt | wc -l)" = "3" && echo "PASS: -3 emits 3 lines"
-	@test "$$(./$(BIN) .test_lines.txt | wc -l)" = "10" && echo "PASS: default emits 10 lines"
-	@rm -f .test_lines.txt
-	@echo "=== testing stdin pipe ==="
+	@./$(BIN) --version | grep -q "0.2.0" && echo "PASS: --version banner"
+	@test "$$(./$(BIN) qa/fixtures/twenty.txt | wc -l)" = "10" && echo "PASS: default emits 10 lines"
+	@test "$$(./$(BIN) -n 5 qa/fixtures/twenty.txt | wc -l)" = "5" && echo "PASS: -n 5 emits 5 lines"
+	@test "$$(./$(BIN) -n 5 qa/fixtures/twenty.txt | head -n 1)" = "16" && echo "PASS: -n 5 starts at 16"
+	@test "$$(./$(BIN) -n +16 qa/fixtures/twenty.txt | head -n 1)" = "16" && echo "PASS: -n +16 starts at 16"
+	@test "$$(./$(BIN) -3 qa/fixtures/twenty.txt | wc -l)" = "3" && echo "PASS: -3 emits 3 lines"
+	@test "$$(./$(BIN) +16 qa/fixtures/twenty.txt | head -n 1)" = "16" && echo "PASS: +16 legacy starts at 16"
+	@test "$$(./$(BIN) -c 5 qa/fixtures/single.txt)" = "line" && echo "PASS: -c 5 emits trailing 5 bytes"
+	@test "$$(./$(BIN) -c +10 qa/fixtures/single.txt)" = "line" && echo "PASS: -c +10 emits from byte 10"
 	@test "$$(printf 'a\nb\nc\nd\n' | ./$(BIN) -n 2)" = "$$(printf 'c\nd')" && echo "PASS: stdin -n 2 works"
-	@echo "=== testing multi-file headers ==="
-	@printf "f1_1\nf1_2\n" > .t1.txt
-	@printf "f2_1\nf2_2\n" > .t2.txt
-	@./$(BIN) .t1.txt .t2.txt | grep -q "==> .t1.txt <==" && echo "PASS: multi-file header 1"
-	@./$(BIN) .t1.txt .t2.txt | grep -q "==> .t2.txt <==" && echo "PASS: multi-file header 2"
-	@test "$$(./$(BIN) -q .t1.txt .t2.txt | grep -c '==>')" = "0" && echo "PASS: -q suppresses headers"
-	@./$(BIN) -v .t1.txt | grep -q "==> .t1.txt <==" && echo "PASS: -v shows header for single file"
-	@rm -f .t1.txt .t2.txt
-	@echo "=== testing follow mode append ==="
+	@test "$$(printf 'abcdef' | ./$(BIN) -c 3)" = "def" && echo "PASS: stdin -c 3 works"
+	@test "$$(printf '1\n2\n3\n4\n5\n' | ./$(BIN) -n +3)" = "$$(printf '3\n4\n5')" && echo "PASS: stdin -n +3 works"
+	@echo "=== Tier 2: Boundary & Negative Trust ==="
+	@./$(BIN) --invalid-xyz > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: invalid flag exits 2"
+	@./$(BIN) -n > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: missing -n arg exits 2"
+	@./$(BIN) -c > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: missing -c arg exits 2"
+	@./$(BIN) /nonexistent/file/path/xyz > /dev/null 2>&1; test $$? -eq 1 && echo "PASS: missing file exits 1"
+	@test -z "$$(./$(BIN) qa/fixtures/empty.txt)" && echo "PASS: empty file emits nothing"
+	@test -z "$$(./$(BIN) -n 0 qa/fixtures/twenty.txt)" && echo "PASS: -n 0 emits nothing"
+	@test -z "$$(./$(BIN) -c 0 qa/fixtures/twenty.txt)" && echo "PASS: -c 0 emits nothing"
+	@test "$$(./$(BIN) -n 50 qa/fixtures/single.txt)" = "only one line" && echo "PASS: count exceeding lines emits whole file"
+	@test "$$(./$(BIN) qa/fixtures/no_nl.txt)" = "unfinished line without newline" && echo "PASS: file without trailing newline"
+	@test "$$(./$(BIN) qa/fixtures/crlf.txt | head -n 1)" = "line1" && echo "PASS: CRLF stripped cleanly"
+	@echo "=== Tier 3: Combinations & Formatting ==="
+	@./$(BIN) qa/fixtures/single.txt qa/fixtures/twenty.txt | grep -q "==> qa/fixtures/single.txt <==" && echo "PASS: multi-file header 1"
+	@./$(BIN) qa/fixtures/single.txt qa/fixtures/twenty.txt | grep -q "==> qa/fixtures/twenty.txt <==" && echo "PASS: multi-file header 2"
+	@test "$$(./$(BIN) -q qa/fixtures/single.txt qa/fixtures/twenty.txt | grep -c '==>')" = "0" && echo "PASS: -q suppresses headers"
+	@./$(BIN) -v qa/fixtures/single.txt | grep -q "==> qa/fixtures/single.txt <==" && echo "PASS: -v shows header for single file"
+	@./$(BIN) --color qa/fixtures/alpha.log | grep -q "$$(printf '\033')" && echo "PASS: --color injects ANSI escapes"
+	@test -z "$$(./$(BIN) --no-color qa/fixtures/alpha.log | grep "$$(printf '\033')")" && echo "PASS: --no-color suppresses ANSI escapes"
+	@test "$$(./$(BIN) --lines=3 qa/fixtures/twenty.txt | wc -l)" = "3" && echo "PASS: --lines=3 long form"
+	@test "$$(./$(BIN) --bytes=4 qa/fixtures/single.txt)" = "ine" && echo "PASS: --bytes=4 long form"
+	@echo "=== Tier 4: MCP Protocol & Live Streaming ==="
+	@printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}\n' | ./$(BIN) --mcp | grep -q "2024-11-05" && echo "PASS: MCP initialize"
+	@printf '{"jsonrpc":"2.0","id":2,"method":"ping","params":{}}\n' | ./$(BIN) --mcp | grep -q '"result":{}' && echo "PASS: MCP ping"
+	@printf '{"jsonrpc":"2.0","id":3,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "tail_file" && echo "PASS: MCP tools/list tail_file"
+	@printf '{"jsonrpc":"2.0","id":4,"method":"tools/list","params":{}}\n' | ./$(BIN) --mcp | grep -q "tail_stream" && echo "PASS: MCP tools/list tail_stream"
+	@printf '{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"tail_file","arguments":{"path":"qa/fixtures/twenty.txt","lines":3}}}\n' | ./$(BIN) --mcp | grep -q "18\\\n19\\\n20" && echo "PASS: MCP tools/call tail_file lines"
+	@printf '{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"tail_stream","arguments":{"content":"first\\nsecond\\nthird\\nfourth","lines":2}}}\n' | ./$(BIN) --mcp | grep -q "third\\\nfourth" && echo "PASS: MCP tools/call tail_stream lines"
+	@printf '{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"nonexistent_tool","arguments":{}}}\n' | ./$(BIN) --mcp | grep -q -- "-32601" && echo "PASS: MCP unknown tool exits -32601"
+	@printf '{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"tail_file","arguments":{"path":"/nonexistent/bad/path"}}}\n' | ./$(BIN) --mcp | grep -q -- "-32602" && echo "PASS: MCP missing path exits -32602"
 	@printf "init1\ninit2\n" > .tf.txt
 	@(sleep 0.1 && printf "app1\n" >> .tf.txt) & \
 	out="$$(OODA_TAIL_CYCLES=3 ./$(BIN) -n 1 -f .tf.txt)"; \
 	wait; \
 	echo "$$out" | grep -q "app1" && echo "PASS: -f follows appended data"
-	@echo "=== testing follow mode truncate recovery ==="
 	@printf "line1\nline2\n" > .tf.txt
 	@(sleep 0.1 && printf "trunc1\n" > .tf.txt) & \
 	out="$$(OODA_TAIL_CYCLES=3 ./$(BIN) -n 1 -f .tf.txt)"; \
 	wait; \
 	echo "$$out" | grep -q "file truncated" && echo "$$out" | grep -q "trunc1" && echo "PASS: -f detects truncate and recovers"
 	@rm -f .tf.txt
-	@echo "=== testing installer & uninstaller dry-run ==="
+	@echo "=== Determinism Probe ==="
+	@run1="$$(./$(BIN) -n 5 qa/fixtures/twenty.txt)"; \
+	run2="$$(./$(BIN) -n 5 qa/fixtures/twenty.txt)"; \
+	test "$$run1" = "$$run2" && echo "PASS: determinism Run_1 == Run_2"
+	@echo "=== Packaging & Installer Smoke Tests ==="
 	@./install.sh --dry-run > /dev/null && echo "PASS: install.sh --dry-run"
 	@./install.sh --uninstall --dry-run > /dev/null && echo "PASS: install.sh --uninstall --dry-run"
 	@./uninstall.sh --dry-run > /dev/null && echo "PASS: uninstall.sh --dry-run"
 	@echo "ALL TESTS PASSED"
+
+bench: $(BIN)
+	@echo "=== Running ootail performance benchmarks ==="
+	@mkdir -p .ooda-cache
+	@seq 1 100000 > .ooda-cache/bench_100k.txt
+	@echo "--- 100,000 lines: tail -n 10 ---"
+	@time -p ./$(BIN) -n 10 .ooda-cache/bench_100k.txt > /dev/null
+	@echo "--- 100,000 lines: tail -c 1000 ---"
+	@time -p ./$(BIN) -c 1000 .ooda-cache/bench_100k.txt > /dev/null
+	@echo "--- 100,000 lines stdin pipe: tail -n 50 ---"
+	@time -p cat .ooda-cache/bench_100k.txt | ./$(BIN) -n 50 > /dev/null
+	@rm -f .ooda-cache/bench_100k.txt
+	@echo "Benchmark complete."
 
 package-deb: $(BIN)
 	@mkdir -p dist/deb-root/DEBIAN dist/deb-root/usr/bin
@@ -119,7 +154,7 @@ package-arch: $(BIN)
 	@chmod 0755 dist/arch-pkg/usr/bin/ootail
 	@cp uninstall.sh dist/arch-pkg/usr/bin/ootail-uninstall
 	@chmod 0755 dist/arch-pkg/usr/bin/ootail-uninstall
-	@printf "pkgname = ootail\npkgbase = ootail\npkgver = $(VERSION)-1\npkgdesc = Capability-bounded file tail and follower utility with inotify and truncate recovery\nurl = https://github.com/openOODA-tools/ootail\nbuilddate = $$(date +%s)\npackager = openOODA-tools <ops@openooda.org>\nsize = $$(stat -c %s $(BIN))\narch = x86_64\nlicense = Apache-2.0\ndepend = glibc\nprovides = ootail\n" > dist/arch-pkg/.PKGINFO
+	@printf "pkgname = ootail\npkgbase = ootail\npkgver = $(VERSION)-1\npkgdesc = Capability-bounded file tail and follower utility with inotify, truncate recovery, and MCP stdio server\nurl = https://github.com/openOODA-tools/ootail\nbuilddate = $$(date +%s)\npackager = openOODA-tools <ops@openooda.org>\nsize = $$(stat -c %s $(BIN))\narch = x86_64\nlicense = Apache-2.0\ndepend = glibc\nprovides = ootail\n" > dist/arch-pkg/.PKGINFO
 	@tar --zstd -cf dist/ootail-$(VERSION)-1-x86_64.pkg.tar.zst -C dist/arch-pkg .PKGINFO usr
 	@rm -rf dist/arch-pkg
 	@bash -n packaging/arch/PKGBUILD

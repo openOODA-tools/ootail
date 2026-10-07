@@ -1,0 +1,172 @@
+// # MCP Stdio Server - Streaming Log and Tail Provider
+//
+// Logline: Speaks Model Context Protocol over stdio for LLM coding agents.
+//
+// Setup: Requires FsReadCap. Dispatches tail_file and tail_stream tool calls.
+//
+// Beats:
+//   1. Handle initialize, ping, and initialized handshakes for protocol 2024-11-05.
+//   2. Advertise tail_file and tail_stream tools with JSON Schema definitions.
+//   3. Dispatch tools/call requests and return bounded window text in content blocks.
+
+import "std/core/primitives/byte.oo";
+import "scan/scan_window.oo";
+import "json_field.oo";
+
+fn build_error(id: String, code: Int, msg: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"error\":{\"code\":" + code.to_string() + ",\"message\":\"" + json_escape(msg) + "\"}}";
+}
+
+fn build_tool_result(id: String, text: String) -> String {
+    return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"" + json_escape(text) + "\"}]}}";
+}
+
+fn parse_json_int(s: String, fallback: Int) -> Int {
+    let tr: String = str_trim(s);
+    let n: Int = byte_len(tr);
+    if n == 0 { return fallback; }
+    let mut acc: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        let b: Int = byte_get(tr, i);
+        if b >= 48 && b <= 57 {
+            acc = acc * 10 + (b - 48);
+        } else {
+            return if i == 0 { fallback } else { acc };
+        }
+        i = i + 1;
+    }
+    return acc;
+}
+
+fn join_lines(lines: List[String]) -> String {
+    let n: Int = list_len(lines);
+    let mut out: String = "";
+    let mut i: Int = 0;
+    while i < n {
+        out = out + list_get(lines, i) + "\n";
+        i = i + 1;
+    }
+    return out;
+}
+
+fn handle_tool_call(fs: &FsReadCap, id: String, req: String) -> String {
+    let params: String = json_field_raw(req, "params");
+    let tool_name: String = json_field_string(params, "name");
+    let args: String = json_field_raw(params, "arguments");
+
+    if tool_name == "tail_file" {
+        let path: String = json_field_string(args, "path");
+        if chars_len(path) == 0 {
+            return build_error(id, -32602, "missing required argument: path");
+        }
+        if !path_exists(fs, path) {
+            return build_error(id, -32602, "file not found: " + path);
+        }
+        let r: Result[String, String] = read_file(fs, path);
+        if !r.is_ok() {
+            return build_error(id, -32602, "error reading file: " + path);
+        }
+        let content: String = match r { Ok(s) => s, Err(_) => "" };
+        let bytes_arg: Int = parse_json_int(json_field_raw(args, "bytes"), 0);
+        let from_start: Bool = json_field_raw(args, "from_start") == "true";
+        if bytes_arg > 0 {
+            let res_bytes: String = if from_start {
+                scan_window_bytes_from(content, bytes_arg)
+            } else {
+                scan_window_bytes(content, bytes_arg)
+            };
+            return build_tool_result(id, res_bytes);
+        }
+        let lines_arg: Int = parse_json_int(json_field_raw(args, "lines"), 10);
+        let all_lines: List[String] = scan_split_lines(content);
+        let win: List[String] = if from_start {
+            scan_window_from(all_lines, lines_arg)
+        } else {
+            scan_window_tail(all_lines, lines_arg)
+        };
+        return build_tool_result(id, join_lines(win));
+    }
+
+    if tool_name == "tail_stream" {
+        let content: String = json_unescape(json_field_string(args, "content"));
+        let bytes_arg: Int = parse_json_int(json_field_raw(args, "bytes"), 0);
+        let from_start: Bool = json_field_raw(args, "from_start") == "true";
+        if bytes_arg > 0 {
+            let res_bytes: String = if from_start {
+                scan_window_bytes_from(content, bytes_arg)
+            } else {
+                scan_window_bytes(content, bytes_arg)
+            };
+            return build_tool_result(id, res_bytes);
+        }
+        let lines_arg: Int = parse_json_int(json_field_raw(args, "lines"), 10);
+        let all_lines: List[String] = scan_split_lines(content);
+        let win: List[String] = if from_start {
+            scan_window_from(all_lines, lines_arg)
+        } else {
+            scan_window_tail(all_lines, lines_arg)
+        };
+        return build_tool_result(id, join_lines(win));
+    }
+
+    return build_error(id, -32601, "unknown tool: " + tool_name);
+}
+
+fn handle_mcp_request(fs: &FsReadCap, req: String) -> String {
+    let method: String = json_field_string(req, "method");
+    let raw_id: String = json_field_raw(req, "id");
+    let id: String = if chars_len(raw_id) == 0 { "null" } else { raw_id };
+
+    if method == "initialize" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"ootail\",\"version\":\"0.2.0\"}}}";
+    }
+    if method == "notifications/initialized" {
+        return "";
+    }
+    if method == "ping" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{}}";
+    }
+    if method == "tools/list" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":{\"tools\":[{\"name\":\"tail_file\",\"description\":\"Inspect trailing lines or bytes from a specified file under process read capability.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"Target file path\"},\"lines\":{\"type\":\"integer\",\"description\":\"Trailing line count (default 10)\"},\"bytes\":{\"type\":\"integer\",\"description\":\"Trailing byte count (0 disables byte mode)\"},\"from_start\":{\"type\":\"boolean\",\"description\":\"Start from offset instead of tail\"}},\"required\":[\"path\"]}},{\"name\":\"tail_stream\",\"description\":\"Window lines from in-memory content or log string payload.\",\"inputSchema\":{\"type\":\"object\",\"properties\":{\"content\":{\"type\":\"string\",\"description\":\"Log text content\"},\"lines\":{\"type\":\"integer\",\"description\":\"Trailing line count (default 10)\"},\"bytes\":{\"type\":\"integer\",\"description\":\"Trailing byte count (0 disables byte mode)\"},\"from_start\":{\"type\":\"boolean\",\"description\":\"Start from offset instead of tail\"}},\"required\":[\"content\"]}}]}}";
+    }
+    if method == "tools/call" {
+        return handle_tool_call(fs, id, req);
+    }
+    if method == "shutdown" {
+        return "{\"jsonrpc\":\"2.0\",\"id\":" + id + ",\"result\":null}";
+    }
+    return build_error(id, -32601, "method not found: " + method);
+}
+
+pub fn run_mcp_server(fs: &FsReadCap) -> Int {
+    let mut buf: String = "";
+    let mut running: Bool = true;
+    while running {
+        let r: Result[String, String] = oo_read_stdin_chunk(fs, 100);
+        if !r.is_ok() {
+            running = false;
+        } else {
+            let chunk: String = match r { Ok(s) => s, Err(_) => "" };
+            if chars_len(chunk) == 0 {
+                running = false;
+            } else {
+                buf = buf + chunk;
+                let mut nl_pos: Int = str_index_of(buf, "\n");
+                while nl_pos >= 0 {
+                    let line: String = str_slice(buf, 0, nl_pos);
+                    buf = str_slice(buf, nl_pos + 1, chars_len(buf));
+                    let trimmed: String = str_trim(line);
+                    if chars_len(trimmed) > 0 {
+                        let reply: String = handle_mcp_request(fs, trimmed);
+                        if chars_len(reply) > 0 {
+                            println(reply);
+                        }
+                    }
+                    nl_pos = str_index_of(buf, "\n");
+                }
+            }
+        }
+    }
+    return 0;
+}
