@@ -84,6 +84,8 @@ package-deb: $(BIN)
 	@sed "s/^Version:.*/Version: $(VERSION)-1/" packaging/debian/control.binary > dist/deb-root/DEBIAN/control
 	@cp $(BIN) dist/deb-root/usr/bin/ootail
 	@chmod 0755 dist/deb-root/usr/bin/ootail
+	@cp uninstall.sh dist/deb-root/usr/bin/ootail-uninstall
+	@chmod 0755 dist/deb-root/usr/bin/ootail-uninstall
 	@dpkg-deb --build --root-owner-group dist/deb-root dist/ootail_$(VERSION)-1_amd64.deb
 	@rm -rf dist/deb-root
 	@echo "built dist/ootail_$(VERSION)-1_amd64.deb"
@@ -91,14 +93,16 @@ package-deb: $(BIN)
 package-rpm: $(BIN)
 	@mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS ~/rpmbuild/RPMS
 	@cp $(BIN) ~/rpmbuild/SOURCES/ootail-linux-x86_64
+	@cp uninstall.sh ~/rpmbuild/SOURCES/uninstall.sh
 	@sed "s/^Version:.*/Version: $(VERSION)/" packaging/ootail.spec > ~/rpmbuild/SPECS/ootail.spec
 	@rpmbuild -bb ~/rpmbuild/SPECS/ootail.spec
 	@cp ~/rpmbuild/RPMS/x86_64/ootail-$(VERSION)*.rpm dist/
 	@echo "built dist RPM package"
 
 package-arch:
-	@bash -n packaging/PKGBUILD
-	@echo "validated packaging/PKGBUILD"
+	@bash -n packaging/arch/PKGBUILD
+	@cp packaging/arch/PKGBUILD packaging/PKGBUILD
+	@echo "validated packaging/arch/PKGBUILD and packaging/PKGBUILD"
 
 package: package-deb package-rpm package-arch
 

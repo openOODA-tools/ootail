@@ -1,86 +1,109 @@
-# ootail: House Laws & Where To Start
+# ootail: House Laws & Agent Engineering Standards (v1)
 
-Status: **skeleton**. Nothing is implemented. This file is the map.
+This document is the **single canonical source of truth** for all code, architecture, and system integration standards across `ootail`. Every human contributor and AI agent must strictly follow these rules without exception.
 
-## 1. What ootail Is
+---
 
-A tail replacement. Show the last lines of a file, and with `--follow` keep
-showing what gets appended. It must behave like `tail -f` closely enough to
-replace it in a pipeline, which means the awkward cases are the whole job:
+## 1. The Page Rule (Code Layout & Sizing)
 
-- a file that is rewritten shorter, not appended to
-- a file replaced by rename, where the old descriptor is now a different file
-- a partial line at EOF, which must be held, not printed and split later
-- non-ASCII content, which breaks naive character indexing
+A **page** is one committed `.oo` or `.oot` file. Every page holds one idea, fits in one head, and carries its own weight. This rule is enforced by automated verification under `make verify`: red pages fail the build.
 
-## 2. The Four Domains
+### Hard Sizing Invariants
+- **16–256 Lines**: Every committed source file must be between **16 and 256 lines**, counted as exact line breaks (blank lines and comments count).
+- **Shim Exemption (Floor Only)**: A file is a shim when every non-comment line is an import or re-export (`import "..."`). Shims skip the 16-line floor. The **256-line ceiling still strictly applies**.
+- **Directory Density ($\le 8$ files)**: At most **8 `.oo` files per directory**, tests included. Crowded directories must split into functional subdirectories grouped by domain.
+- **Banned File Names (Name the function, not the drawer)**:
+  `util.oo`, `utils.oo`, `helper.oo`, `helpers.oo`, `common.oo`, `misc.oo`, `shared.oo`, `base.oo`, `core.oo`.
 
-Work lands in exactly one domain at a time. Each anchor.oo states its contract.
+### Splitting, Folding, and Naming
+- **Over 256 lines**: Split along functional boundaries into a new subdirectory with an `anchor.oo` shim. One page = one verb or one wholly owned noun.
+- **Under 16 lines (and not a shim)**: Fold into its closest sibling or caller. Never pad lines with artificial whitespace or comments to reach 16.
+- **Action pages lead with a verb**: `scan_window.oo`, `watch_poll.oo`, `render_line.oo`.
+- **State pages name what they own**: `tail_opts.oo`, `watch_state.oo`.
+- **Boundary pages speak trust verbs**: `verify_token.oo`, `admit_file.oo`, `enforce_quota.oo`.
 
-| Domain | Job | Does not do |
+---
+
+## 2. The 4-Element Academy Header (Mandatory on Every Page)
+
+Every committed `.oo` file must begin with the standard 4-element Academy docstring within its first 7 lines:
+
+```oo
+// # Component Name - Subtitle
+//
+// Logline: Single-sentence imperative summary of functional responsibility.
+//
+// Setup: Preconditions, wired capability tokens, imported contracts.
+//
+// Beats:
+//   1. First sequential phase of execution.
+//   2. Next phase.
+//   3. Final phase / exit state.
+```
+
+- **ASD-STE100 Compliance**: Clear, concise English. No filler or ambiguous verbs.
+- **Imports**: All imports must be relative string literals (e.g. `import "render/render_line.oo";`). Never use `::` namespaces.
+
+---
+
+## 3. openOODA Capability & Zero-Trust Discipline
+
+`ootail` operates strictly on the Object-Capability (OCap) security model:
+
+### Unforgeable Capability Tokens
+- **Zero Ambient Authority**: Privileged operations (reading files, inotify kernel probes, environment access) require explicit, unforgeable capability tokens passed as arguments (`&FsReadCap`, `&SysCap`, `&TimeCap`, `&EnvCap`).
+- **Read-Only by Construction**: Streaming logs requires zero write access or network egress. Absence of `&FsWriteCap` and `&NetCap` in `main` is an architectural guarantee.
+- **Subprocess Safety**: Never invoke `/bin/sh -c` or `/bin/bash -c`. Direct binary execution must use explicit argv arrays via `ProcessCap`. Clean environment variables of child processes.
+- **Truncate & Replay Safety**: Detect file replacements and truncations via inotify / file size polling; reset read offsets deterministically without losing data.
+
+---
+
+## 4. Unified Theming with `oote`
+
+All openOODA tools synchronize visual presentation through `oote`:
+
+- **Theme Resolver**: `ootail` formats log level badges (`log_trace`, `log_debug`, `log_info`, `log_warn`, `log_error`) directly from `~/.openooda/theme.oot` or respects `OODA_THEME`, `OODA_MODE`, and `OODA_BORDER`.
+- **Graceful Capability Degradation**: Automatically emits 24-bit TrueColor, degrades to 256 or 16-color ANSI, and suppresses all ANSI escapes under `NO_COLOR`, `OODA_NO_COLOR`, or `TERM=dumb`.
+
+---
+
+## 5. Native systemd Citizenship & Linux Integration
+
+This server follows a pure systemd-native architectural pattern:
+
+1. **System Services & Unit Placement**: Services managed in `/etc/systemd/system/`. Prefer drop-in overrides (`/etc/systemd/system/<unit>.service.d/*.conf`).
+2. **Declarative State & Provisioning**: Accounts declared via `systemd-sysusers` in `/etc/sysusers.d/*.conf`; directory lifecycle via `systemd-tmpfiles` in `/etc/tmpfiles.d/*.conf`.
+3. **Service Confinement & Hardening**: Use native sandboxing (`ProtectSystem=`, `ProtectHome=`, `PrivateTmp=`, `NoNewPrivileges=`).
+4. **Logging & Schedulers**: Logging handled exclusively by `systemd-journald`. Scheduled tasks executed via `systemd.timer` units rather than legacy cron.
+5. **Standard System Directories**: Use `$RUNTIME_DIRECTORY` (`/run/openooda`), `$STATE_DIRECTORY` (`/var/lib/openooda`), `$CONFIGURATION_DIRECTORY` (`/etc/openooda`).
+6. **Exit Code Contract**: Strict tail parity:
+   - `0`: Successful completion or clean termination on `SIGINT`.
+   - `1`: File not found, permission denied, or general runtime failure.
+
+---
+
+## 6. Domain Architecture & Responsibilities
+
+Work lands in exactly one domain at a time:
+
+| Domain | Responsibility | Does NOT Do |
 |---|---|---|
-| `watch/` | report append, truncate, and replace | read file contents |
-| `scan/` | bytes arriving into whole lines | decide what to watch |
-| `render/` | lines to prefixed output | split or buffer lines |
-| `ipc/` | CLI, MCP stdio, AF_UNIX socket | reimplement line assembly |
+| `scan/` | Byte streaming, line windowing, CRLF normalization, non-ASCII boundary checks | Inotify watch or file polling |
+| `watch/` | File change observation, inotify events under `&SysCap`, append/truncate triggers | Line parsing or rendering |
+| `render/` | Multi-file header banners, log level semantic color formatting | File watching or windowing |
+| `ipc/` | CLI options, MCP stdio server (`tail_stream`) | Reimplement line assembly |
 
-Suggested order: `scan/` (pure, testable with no harness), then `watch/`, then
-`render/`, then `ipc/`.
+---
 
-## 3. The Page Rule
+## 7. Verification & QA Gate
 
-Every `.oo` and `.oot` page is 16 to 256 lines. A shim — a file whose every
-non-comment line is an import — skips the 16-line floor but never the ceiling.
+Before any commit or release is certified, the entire codebase must pass the automated verification gate:
 
-At most 8 pages per directory, counting tests.
-
-Never name a page `util.oo`, `utils.oo`, `helper.oo`, `helpers.oo`,
-`common.oo`, `misc.oo`, `shared.oo`, `base.oo`, or `core.oo`. Use a verb:
-`watch_poll.oo`, `scan_take_line.oo`, `render_line.oo`.
-
-Imports are relative string literals. There are no `::` namespaces.
-
-## 4. The 4-Element Academy Header
-
-Mandatory on every page, all four elements within the first 7 lines. The gate
-enforces this, so a Setup paragraph that runs long will push `Beats:` out and
-fail the build.
-
-## 5. Capability Discipline
-
-Zero ambient authority. Every function that touches the outside world takes the
-explicit token it needs: `FsReadCap`, `FsWriteCap`, `BindCap`, `ProcessCap`.
-
-Never `/bin/sh -c`. Use an explicit argv array. No shell, no PATH lookup.
-
-Every file descriptor is opened `O_CLOEXEC`.
-
-Validation is negative-trust and fails closed. Double-run determinism is
-required.
-
-`process_exit` is classified under `ProcessCap`. `main`'s return value does NOT
-set exit status, so a non-zero status must be raised explicitly.
-
-## 6. Runtime Traps Already Found
-
-- `str_index_of` returns **byte** offsets while `str_slice` and `char_at` are
-  **character** indexed. Mixing them truncates silently on non-ASCII input. Use
-  `byte_get` and `byte_sub` together, or nothing. This one bit oogrep: every
-  match was silently lost on files containing emoji.
-- `char_at` is O(index); character-by-character scanning is quadratic.
-- A `"\0"` literal compiles to an empty string, and `"\033["` emits no escape.
-  Build such bytes explicitly, e.g. with `bytes_to_str(bytes_push(bytes_new(), 27))`.
-- `byte_concat` cannot lower. `str_concat` fails at check. Use `+`.
-- `oo_read_stdin_chunk` in oodar shows the three-state read pattern: data, timed
-  out, and peer gone are three distinct outcomes, not two. Follow it.
-- `parse_int` is a std builtin at arity 1. Avoid the name.
-
-## 7. Verification Gate
-
-```
-make verify
-```
-
-Runs `line-cap`, `file-law`, `academy`, `density`, then `oodac check` on every
-page. All five must pass. There is no `test` target yet; add one when following
-produces observable output.
+1. **`make line-cap`**: Hard verification that 100% of `.oo` and `.oot` files are between 16 and 256 lines (shims exempt).
+2. **`make file-law`**: Verification that no forbidden file extensions or stray documents are committed.
+3. **`make academy`**: Verification that every source file contains the complete 4-element Academy header in its first 7 lines.
+4. **`make density`**: Verification that no directory holds more than 8 pages.
+5. **`make check`**: Full syntax and semantic verification via `oodac check` across every `.oo` page.
+6. **`make verify`**: Orchestrates all verification checks. Red pages fail the build.
+7. **`make test`**: Line windowing tests, inotify follow tests, and truncate detection suites.
+8. **Double-Run Determinism**: All verification runs execute twice sequentially in fresh processes ($Run_1 == Run_2$).

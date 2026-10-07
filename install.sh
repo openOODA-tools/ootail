@@ -277,8 +277,30 @@ else
     ok "Downloaded and installed $VERSION_PIN to $PREFIX/ootail"
 fi
 
+if [ -f "./uninstall.sh" ]; then
+    cp "./uninstall.sh" "$PREFIX/ootail-uninstall"
+    chmod +x "$PREFIX/ootail-uninstall"
+    ok "Installed companion uninstaller to $PREFIX/ootail-uninstall"
+else
+    UNINSTALL_URL="https://raw.githubusercontent.com/${REPO}/${VERSION_PIN}/uninstall.sh"
+    TMP_UNINSTALL="$(mktemp)"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$UNINSTALL_URL" -o "$TMP_UNINSTALL" 2>/dev/null || true
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$TMP_UNINSTALL" "$UNINSTALL_URL" 2>/dev/null || true
+    fi
+    if [ -s "$TMP_UNINSTALL" ]; then
+        chmod +x "$TMP_UNINSTALL"
+        mv "$TMP_UNINSTALL" "$PREFIX/ootail-uninstall"
+        ok "Installed companion uninstaller to $PREFIX/ootail-uninstall"
+    else
+        rm -f "$TMP_UNINSTALL"
+    fi
+fi
+
 if "$PREFIX/ootail" --version >/dev/null 2>&1; then
     ok "Verified: $("$PREFIX/ootail" --version)"
 else
     warn "Installed binary failed execution check."
 fi
+
