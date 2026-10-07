@@ -1,7 +1,4 @@
-# ootail v0.0.1 Makefile
-#
-# Skeleton. Build and the verification gate only; there is no behaviour to test
-# yet, so there is no test target. Add one when the filter lands.
+# ootail Makefile
 #
 # Usage:
 #   make build       - compile main.oo to dist/ootail
@@ -11,16 +8,21 @@
 #   make academy     - verify every .oo has the 4-element Academy header
 #   make density     - enforce at most 8 pages per directory
 #   make verify      - run line-cap, file-law, academy, density, and check
+#   make test        - run functional test suite
+#   make package-deb - generate Debian (.deb) package
+#   make package-rpm - generate RedHat/Fedora (.rpm) package
+#   make package     - build all distribution packages
 #   make clean       - remove build artifacts
 
 OODA_COMPILER ?= $(firstword $(wildcard $(HOME)/.openooda/bin/oodac $(CURDIR)/../../openOODA/oodac/bin/oodac))
 OODACODEX ?= $(HOME)/.openooda/northstar.oot
 OO_LIST_AMBIENT_QUOTA ?= 8589934592
 BIN := dist/ootail
+VERSION ?= 0.1.0
 
 SRC := $(wildcard *.oo) $(wildcard */*.oo)
 
-.PHONY: all build check line-cap file-law academy density verify test clean
+.PHONY: all build check line-cap file-law academy density verify test package package-deb package-rpm package-arch clean
 
 all: verify build test
 
@@ -37,14 +39,71 @@ test: $(BIN)
 	@./$(BIN) --help > /dev/null && echo "PASS: --help"
 	@echo "=== testing --version ==="
 	@./$(BIN) --version > /dev/null && echo "PASS: --version"
-	@echo "=== testing no args (expect 2) ==="
-	@./$(BIN) > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: no args exits 2"
+	@echo "=== testing invalid flag (expect exit 2) ==="
+	@./$(BIN) --invalid-xyz > /dev/null 2>&1; test $$? -eq 2 && echo "PASS: invalid flag exits 2"
+	@echo "=== testing missing file (expect exit 1) ==="
+	@./$(BIN) /nonexistent/file/path/xyz > /dev/null 2>&1; test $$? -eq 1 && echo "PASS: missing file exits 1"
+	@echo "=== testing -n line windowing ==="
+	@seq 1 20 > .test_lines.txt
+	@test "$$(./$(BIN) -n 5 .test_lines.txt | wc -l)" = "5" && echo "PASS: -n 5 emits 5 lines"
+	@test "$$(./$(BIN) -n 5 .test_lines.txt | head -n 1)" = "16" && echo "PASS: -n 5 starts at 16"
+	@test "$$(./$(BIN) -3 .test_lines.txt | wc -l)" = "3" && echo "PASS: -3 emits 3 lines"
+	@test "$$(./$(BIN) .test_lines.txt | wc -l)" = "10" && echo "PASS: default emits 10 lines"
+	@rm -f .test_lines.txt
+	@echo "=== testing stdin pipe ==="
+	@test "$$(printf 'a\nb\nc\nd\n' | ./$(BIN) -n 2)" = "$$(printf 'c\nd')" && echo "PASS: stdin -n 2 works"
+	@echo "=== testing multi-file headers ==="
+	@printf "f1_1\nf1_2\n" > .t1.txt
+	@printf "f2_1\nf2_2\n" > .t2.txt
+	@./$(BIN) .t1.txt .t2.txt | grep -q "==> .t1.txt <==" && echo "PASS: multi-file header 1"
+	@./$(BIN) .t1.txt .t2.txt | grep -q "==> .t2.txt <==" && echo "PASS: multi-file header 2"
+	@test "$$(./$(BIN) -q .t1.txt .t2.txt | grep -c '==>')" = "0" && echo "PASS: -q suppresses headers"
+	@./$(BIN) -v .t1.txt | grep -q "==> .t1.txt <==" && echo "PASS: -v shows header for single file"
+	@rm -f .t1.txt .t2.txt
+	@echo "=== testing follow mode append ==="
+	@printf "init1\ninit2\n" > .tf.txt
+	@(sleep 0.1 && printf "app1\n" >> .tf.txt) & \
+	out="$$(OODA_TAIL_CYCLES=3 ./$(BIN) -n 1 -f .tf.txt)"; \
+	wait; \
+	echo "$$out" | grep -q "app1" && echo "PASS: -f follows appended data"
+	@echo "=== testing follow mode truncate recovery ==="
+	@printf "line1\nline2\n" > .tf.txt
+	@(sleep 0.1 && printf "trunc1\n" > .tf.txt) & \
+	out="$$(OODA_TAIL_CYCLES=3 ./$(BIN) -n 1 -f .tf.txt)"; \
+	wait; \
+	echo "$$out" | grep -q "file truncated" && echo "$$out" | grep -q "trunc1" && echo "PASS: -f detects truncate and recovers"
+	@rm -f .tf.txt
+	@echo "=== testing installer & uninstaller dry-run ==="
+	@./install.sh --dry-run > /dev/null && echo "PASS: install.sh --dry-run"
+	@./install.sh --uninstall --dry-run > /dev/null && echo "PASS: install.sh --uninstall --dry-run"
+	@./uninstall.sh --dry-run > /dev/null && echo "PASS: uninstall.sh --dry-run"
 	@echo "ALL TESTS PASSED"
+
+package-deb: $(BIN)
+	@mkdir -p dist/deb-root/DEBIAN dist/deb-root/usr/bin
+	@sed "s/^Version:.*/Version: $(VERSION)-1/" packaging/debian/control.binary > dist/deb-root/DEBIAN/control
+	@cp $(BIN) dist/deb-root/usr/bin/ootail
+	@chmod 0755 dist/deb-root/usr/bin/ootail
+	@dpkg-deb --build --root-owner-group dist/deb-root dist/ootail_$(VERSION)-1_amd64.deb
+	@rm -rf dist/deb-root
+	@echo "built dist/ootail_$(VERSION)-1_amd64.deb"
+
+package-rpm: $(BIN)
+	@mkdir -p ~/rpmbuild/SOURCES ~/rpmbuild/SPECS ~/rpmbuild/RPMS
+	@cp $(BIN) ~/rpmbuild/SOURCES/ootail-linux-x86_64
+	@sed "s/^Version:.*/Version: $(VERSION)/" packaging/ootail.spec > ~/rpmbuild/SPECS/ootail.spec
+	@rpmbuild -bb ~/rpmbuild/SPECS/ootail.spec
+	@cp ~/rpmbuild/RPMS/x86_64/ootail-$(VERSION)*.rpm dist/
+	@echo "built dist RPM package"
+
+package-arch:
+	@bash -n packaging/PKGBUILD
+	@echo "validated packaging/PKGBUILD"
+
+package: package-deb package-rpm package-arch
 
 # --- Verification gate ---------------------------------------------------------
 
-# A shim is a file whose every non-comment line is an import. Shims skip the
-# 16-line floor. The 256-line ceiling still applies to them without exception.
 line-cap:
 	@violations=0; \
 	for f in $$(find . -name "*.oo" -o -name "*.oot"); do \

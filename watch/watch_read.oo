@@ -1,0 +1,57 @@
+// # Watch Read - Incremental File Bytes Reading
+//
+// Logline: Reads newly appended byte slices from a followed file between offsets.
+//
+// Setup: Requires &FsReadCap to read file contents and compute newly appended slices.
+//
+// Beats:
+//   1. Read entire file contents safely via &FsReadCap.
+//   2. Extract byte slice from current offset to total size.
+//   3. Advance follower offset and return newly read payload.
+
+import "std/core/primitives/byte.oo";
+import "watch_poll.oo";
+
+pub type WatchReadResult = struct {
+    bytes: String,
+    new_watch: TailWatch,
+    ok: Bool
+};
+
+pub fn watch_read_append(fs: &FsReadCap, w: TailWatch) -> WatchReadResult {
+    let r: Result[String, String] = read_file(fs, w.path);
+    if !r.is_ok() {
+        return WatchReadResult {
+            bytes: "",
+            new_watch: w,
+            ok: false
+        };
+    }
+    let content: String = match r { Ok(s) => s, Err(_) => "" };
+    let cur_len: Int = byte_len(content);
+    if cur_len <= w.offset {
+        return WatchReadResult {
+            bytes: "",
+            new_watch: TailWatch {
+                path: w.path,
+                offset: cur_len,
+                last_size: cur_len,
+                is_truncated: false,
+                exists: true
+            },
+            ok: true
+        };
+    }
+    let newly_added: String = byte_sub(content, w.offset, cur_len);
+    return WatchReadResult {
+        bytes: newly_added,
+        new_watch: TailWatch {
+            path: w.path,
+            offset: cur_len,
+            last_size: cur_len,
+            is_truncated: false,
+            exists: true
+        },
+        ok: true
+    };
+}

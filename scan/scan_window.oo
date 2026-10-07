@@ -1,0 +1,60 @@
+// # Scan Window - File Line Windowing
+//
+// Logline: Splits text into line lists and applies count windowing for head/tail selection.
+//
+// Setup: Pure list manipulation over newline-delimited text payloads.
+//
+// Beats:
+//   1. Split raw text buffer into list of lines by newline byte offset.
+//   2. Slice last N lines from line list (tail windowing).
+//   3. Support offset from start (+K) or default count windowing.
+
+import "std/core/primitives/byte.oo";
+import "scan_take_line.oo";
+
+pub fn scan_split_lines(content: String) -> List[String] {
+    let mut out: List[String] = list_new();
+    let n: Int = byte_len(content);
+    if n == 0 { return out; }
+    let mut start: Int = 0;
+    let mut i: Int = 0;
+    while i < n {
+        if byte_get(content, i) == 10 {
+            let raw: String = byte_sub(content, start, i);
+            out = list_push(out, scan_strip_cr(raw));
+            start = i + 1;
+        }
+        i = i + 1;
+    }
+    if start < n {
+        let tail_part: String = byte_sub(content, start, n);
+        out = list_push(out, scan_strip_cr(tail_part));
+    }
+    return out;
+}
+
+pub fn scan_window_tail(lines: List[String], count: Int) -> List[String] {
+    let total: Int = list_len(lines);
+    if count <= 0 { return list_new(); }
+    if total <= count { return lines; }
+    let start_idx: Int = total - count;
+    let mut res: List[String] = list_new();
+    let mut i: Int = start_idx;
+    while i < total {
+        res = list_push(res, list_get(lines, i));
+        i = i + 1;
+    }
+    return res;
+}
+
+pub fn scan_window_from(lines: List[String], start_line: Int) -> List[String] {
+    let total: Int = list_len(lines);
+    let mut idx: Int = start_line - 1;
+    if idx < 0 { idx = 0; }
+    let mut res: List[String] = list_new();
+    while idx < total {
+        res = list_push(res, list_get(lines, idx));
+        idx = idx + 1;
+    }
+    return res;
+}

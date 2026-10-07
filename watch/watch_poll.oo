@@ -1,0 +1,64 @@
+// # Watch Poll - File Change and Size Monitoring
+//
+// Logline: Monitors file size and modification changes with inotify probe and polling fallback.
+//
+// Setup: Interrogates &SysCap for inotify readiness, delegates to &FsReadCap for size queries.
+//
+// Beats:
+//   1. Probe system inotify capability under &SysCap for OS event readiness.
+//   2. Track file existence and byte size between poll iterations.
+//   3. Classify file growth, truncation, and deletion transitions.
+
+import "std/fs/file/watch.oo";
+
+pub type TailWatch = struct {
+    path: String,
+    offset: Int,
+    last_size: Int,
+    is_truncated: Bool,
+    exists: Bool
+};
+
+pub fn watch_probe_inotify(sys: &SysCap) -> Bool {
+    let res: Result[String, String] = watch_init_inotify(sys);
+    return res.is_ok();
+}
+
+pub fn watch_file_init(fs: &FsReadCap, path: String) -> TailWatch {
+    let ex: Bool = path_exists(fs, path);
+    let sz: Int = if ex { file_size(fs, path) } else { 0 };
+    return TailWatch {
+        path: path,
+        offset: sz,
+        last_size: sz,
+        is_truncated: false,
+        exists: ex
+    };
+}
+
+pub fn watch_file_check(fs: &FsReadCap, w: TailWatch) -> TailWatch {
+    let ex: Bool = path_exists(fs, w.path);
+    if !ex {
+        return TailWatch {
+            path: w.path,
+            offset: 0,
+            last_size: 0,
+            is_truncated: false,
+            exists: false
+        };
+    }
+    let sz: Int = file_size(fs, w.path);
+    let truncated: Bool = sz < w.last_size;
+    let new_off: Int = if truncated { 0 } else { w.offset };
+    return TailWatch {
+        path: w.path,
+        offset: new_off,
+        last_size: sz,
+        is_truncated: truncated,
+        exists: true
+    };
+}
+
+pub fn watch_has_new_data(w: TailWatch) -> Bool {
+    return w.exists && (w.last_size > w.offset);
+}

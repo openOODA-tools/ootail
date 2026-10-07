@@ -2,17 +2,15 @@
 //
 // Logline: Buffers partial reads into complete lines so output never splits one.
 //
-// Setup: Skeleton. Pure; mirrors std/net/varlink/frame.oo, which owns this shape.
+// Setup: Re-exports byte accumulator and line windowing functions.
 //
 // Beats:
-//   1. Emit whole lines only, holding any trailing partial line for later.
-//   2. Reassemble correctly across non-ASCII content and missing final newline.
-// No implementation yet. This anchor is the documented landing zone for the
-// scan pages and gives `make verify` a page to check in this domain.
-//
-// A read boundary is not a line boundary, and char_at is O(index) so scanning a
-// long file character by character is quadratic. Take the read offset from the
-// caller rather than seeking, so a rotation cannot rewind progress behind its back.
-//
-// First page to write: scan_take_line.oo, mirroring varlink_frame_push. Reusing
-// that page's shape is deliberate; two line assemblers will disagree.
+//   1. Re-export byte chunk accumulation and newline splitting.
+//   2. Re-export tail and offset line windowing helpers.
+
+import "scan_take_line.oo";
+import "scan_window.oo";
+
+pub fn scan_anchor_ready() -> Bool {
+    return true;
+}

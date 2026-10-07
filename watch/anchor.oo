@@ -2,18 +2,15 @@
 //
 // Logline: Reports when a followed file or directory changes, and how it changed.
 //
-// Setup: Skeleton. watch.oo wraps only oo_sys_inotify_init; the rest is residual.
+// Setup: Re-exports file watching, inotify probing, and append slice reading.
 //
 // Beats:
-//   1. Detect append, truncate, and replace, and report which one occurred.
-//   2. Re-read from offset zero after a truncate instead of seeking forward.
-// No implementation yet. This anchor is the documented landing zone for the
-// watch pages and gives `make verify` a page to check in this domain.
-//
-// This domain fills a known hole rather than inventing a mechanism: the add-watch
-// and poll paths in std are marked residual. Truncation is the hard case, since a
-// rewrite makes the file shorter and a follower that only seeks forward prints
-// nothing instead of re-reading from zero.
-//
-// First page to write: watch_poll.oo over oo_sys_inotify_init, confirming the
-// event stream reaches .oo at all before any truncate handling is attempted.
+//   1. Re-export inotify probe and polling watcher structures.
+//   2. Re-export incremental append read operations.
+
+import "watch_poll.oo";
+import "watch_read.oo";
+
+pub fn watch_anchor_ready() -> Bool {
+    return true;
+}

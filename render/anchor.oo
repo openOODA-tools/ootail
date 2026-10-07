@@ -10,3 +10,8 @@
 
 import "render_theme.oo";
 import "render_line.oo";
+import "render_header.oo";
+
+pub fn render_anchor_ready() -> Bool {
+    return true;
+}

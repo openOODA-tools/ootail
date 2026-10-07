@@ -1,0 +1,19 @@
+// # Render Header - File Header Formatting
+//
+// Logline: Formats multi-file delimiter headers for clean terminal differentiation.
+//
+// Setup: Pure string formatter applying standard ==> filename <== banner formatting.
+//
+// Beats:
+//   1. Build banner delimiter enclosing file name.
+//   2. Apply theme accent coloring when color output is enabled.
+//   3. Separate multiple file listings with standard line padding.
+
+pub fn render_file_header(path: String, is_first: Bool) -> String {
+    let pfx: String = if is_first { "" } else { "\n" };
+    return pfx + "==> " + path + " <==\n";
+}
+
+pub fn render_truncated_notice(path: String) -> String {
+    return "ootail: " + path + ": file truncated\n";
+}

@@ -1,0 +1,58 @@
+// # Scan Take Line - Byte Accumulator for Whole Lines
+//
+// Logline: Buffers incoming byte streams and extracts complete newline-delimited lines.
+//
+// Setup: Pure byte-indexed state machine. Tolerates CRLF by stripping trailing CR.
+//
+// Beats:
+//   1. Accumulate incoming byte chunks into persistent buffer state.
+//   2. Locate newline byte and extract individual lines without character corruption.
+//   3. Strip carriage returns and signal whether a completed line was yielded.
+
+import "std/core/primitives/byte.oo";
+
+pub type LineScanState = struct {
+    buf: String,
+    line: String,
+    has_line: Bool
+};
+
+pub fn scan_state_new() -> LineScanState {
+    return LineScanState { buf: "", line: "", has_line: false };
+}
+
+pub fn scan_find_nl(s: String) -> Int {
+    let n: Int = byte_len(s);
+    let mut i: Int = 0;
+    while i < n {
+        if byte_get(s, i) == 10 {
+            return i;
+        }
+        i = i + 1;
+    }
+    return 0 - 1;
+}
+
+pub fn scan_strip_cr(line: String) -> String {
+    let n: Int = byte_len(line);
+    if n == 0 { return line; }
+    if byte_get(line, n - 1) == 13 {
+        return byte_sub(line, 0, n - 1);
+    }
+    return line;
+}
+
+pub fn scan_push_bytes(prev: LineScanState, chunk: String) -> LineScanState {
+    let acc: String = prev.buf + chunk;
+    let at: Int = scan_find_nl(acc);
+    if at < 0 {
+        return LineScanState { buf: acc, line: "", has_line: false };
+    }
+    let rest: String = byte_sub(acc, at + 1, byte_len(acc));
+    let raw: String = byte_sub(acc, 0, at);
+    return LineScanState {
+        buf: rest,
+        line: scan_strip_cr(raw),
+        has_line: true
+    };
+}

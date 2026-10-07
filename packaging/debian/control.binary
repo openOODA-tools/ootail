@@ -1,0 +1,10 @@
+Package: ootail
+Version: 0.1.0-1
+Section: utils
+Priority: optional
+Architecture: amd64
+Maintainer: openOODA-tools <ops@openooda.org>
+Description: Capability-bounded file tail and follower utility
+ A drop-in tail replacement written in pure openOODA, featuring
+ line windowing (-n), inotify-probed following (-f), truncated file
+ recovery, and zero ambient authority capability security.
